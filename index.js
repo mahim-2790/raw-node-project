@@ -8,15 +8,10 @@
 const http = require('http');
 const { handleReqRes } = require('./helpers/handleReqRes');
 const environment = require('./helpers/environments');
-const data = require('./lib/data');
+// const data = require('./lib/data');
 
 // app object - module scaffolding
 const app = {};
-
-// testing fs
-data.delete('test', 'newfile', (err, result) => {
-    console.log({ err }, { result });
-});
 
 // create server
 app.createServer = () => {
