@@ -8,10 +8,8 @@
     "node": true
   },
   "rules": {
-    //for underscore problem in userHandler
-    "no-underscore-dangle": 0,
     "no-console": 0,
-    "indent": 0,
+    "no-underscore-dangle": 0,
     "prettier/prettier": [
       "error",
       {
