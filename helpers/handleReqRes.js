@@ -57,8 +57,6 @@ handler.handleReqRes = (req, res) => {
             res.end(payLoadString);
         });
 
-        // console.log({ realData });
-
         // response handle
         // res.end('hello programmers');
     });

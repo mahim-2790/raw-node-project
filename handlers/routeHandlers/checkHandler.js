@@ -1,8 +1,8 @@
 /*
- * Title: user Handler
- * Description: user routes to handle user related routes
+ * Title: Check Handler
+ * Description: user routes to handle check related routes
  * Author: Mohi Uddin Mahim
- * Date: 05-07-22
+ * Date: 20-07-22
  */
 
 // dependencies
@@ -13,10 +13,10 @@ const tokenHandler = require('./tokenHandler');
 // module scaffold
 const handler = {};
 
-handler.userHandler = (requestProperties, callback) => {
+handler.checkHandler = (requestProperties, callback) => {
     const acceptedMethods = ['get', 'post', 'put', 'delete'];
     if (acceptedMethods.indexOf(requestProperties.method) > -1) {
-        handler._users[requestProperties.method](requestProperties, callback);
+        handler._check[requestProperties.method](requestProperties, callback);
     } else {
         callback(405, {
             message: "You don't have access",
@@ -24,9 +24,9 @@ handler.userHandler = (requestProperties, callback) => {
     }
 };
 
-handler._users = {};
+handler._check = {};
 
-handler._users.post = (requestProperties, callback) => {
+handler._check.post = (requestProperties, callback) => {
     const firstName =
         typeof requestProperties.body.firstName === 'string' &&
         requestProperties.body.firstName.trim().length > 0
@@ -95,7 +95,7 @@ handler._users.post = (requestProperties, callback) => {
     }
 };
 
-handler._users.get = (requestProperties, callback) => {
+handler._check.get = (requestProperties, callback) => {
     // check the phone number is valid
     const phone =
         typeof requestProperties.queryStringObject.phone === 'string' &&
@@ -137,7 +137,7 @@ handler._users.get = (requestProperties, callback) => {
     }
 };
 
-handler._users.put = (requestProperties, callback) => {
+handler._check.put = (requestProperties, callback) => {
     const firstName =
         typeof requestProperties.body.firstName === 'string' &&
         requestProperties.body.firstName.trim().length > 0
@@ -221,7 +221,7 @@ handler._users.put = (requestProperties, callback) => {
     }
 };
 
-handler._users.delete = (requestProperties, callback) => {
+handler._check.delete = (requestProperties, callback) => {
     // check the phone number is valid
     const phone =
         typeof requestProperties.queryStringObject.phone === 'string' &&

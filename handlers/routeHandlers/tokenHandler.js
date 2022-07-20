@@ -122,7 +122,6 @@ handler._token.put = (requestProperties, callback) => {
 
     if (id && extend) {
         data.read('tokens', id, (err, tokenData) => {
-            console.log({ tokenData }, { err });
             if (!err && tokenData) {
                 const tokenObject = parseJSON(tokenData);
                 if (tokenObject.expires > Date.now()) {
@@ -188,6 +187,20 @@ handler._token.delete = (requestProperties, callback) => {
     } else {
         callback(400, { error: 'There is a problem with req' });
     }
+};
+
+handler._token.verify = (id, phone, callback) => {
+    data.read('tokens', id, (err, tokenData) => {
+        if (!err && tokenData) {
+            if (parseJSON(tokenData).phone === phone && parseJSON(tokenData).expires > Date.now()) {
+                callback(true);
+            } else {
+                callback(false);
+            }
+        } else {
+            callback(false);
+        }
+    });
 };
 
 module.exports = handler;
