@@ -2,7 +2,7 @@
   "id": "t73frhrkqyhoogjkixgd",
   "userPhone": "01793323884",
   "protocol": "http",
-  "url": "google.com",
+  "url": "bal.com",
   "method": "GET",
   "successCodes": [200, 201],
   "timeoutSeconds": 2

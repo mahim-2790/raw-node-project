@@ -7,7 +7,7 @@
 
 // dependencies
 const data = require('../../lib/data');
-const { hash, parseJSON, createRandomString } = require('../../helpers/utilities');
+const { parseJSON, createRandomString } = require('../../helpers/utilities');
 const tokenHandler = require('./tokenHandler');
 const { maxChecks } = require('../../helpers/environments');
 
@@ -142,10 +142,238 @@ handler._check.post = (requestProperties, callback) => {
     }
 };
 
-handler._check.get = (requestProperties, callback) => {};
+handler._check.get = (requestProperties, callback) => {
+    const id =
+        typeof requestProperties.queryStringObject.id === 'string' &&
+        requestProperties.queryStringObject.id.trim().length === 20
+            ? requestProperties.queryStringObject.id
+            : false;
 
-handler._check.put = (requestProperties, callback) => {};
+    if (id) {
+        // looking up checks
+        data.read('checks', id, (err, checkData) => {
+            if (!err && checkData) {
+                const token =
+                    typeof requestProperties.headersObject.token === 'string'
+                        ? requestProperties.headersObject.token
+                        : false;
+                tokenHandler._token.verify(
+                    token,
+                    parseJSON(checkData).userPhone,
+                    (tokenIsValid) => {
+                        if (tokenIsValid) {
+                            callback(200, parseJSON(checkData));
+                        } else {
+                            callback('403', {
+                                error: 'Authentication Failure',
+                            });
+                        }
+                    }
+                );
+            } else {
+                callback(500, {
+                    error: 'Server error',
+                });
+            }
+        });
+    } else {
+        callback(400, {
+            error: 'There was a problem in your request',
+        });
+    }
+};
 
-handler._check.delete = (requestProperties, callback) => {};
+handler._check.put = (requestProperties, callback) => {
+    // validate id
+    const id =
+        typeof requestProperties.body.id === 'string' &&
+        requestProperties.body.id.trim().length === 20
+            ? requestProperties.body.id
+            : false;
+    // validate inputs
+    const protocol =
+        typeof requestProperties.body.protocol === 'string' &&
+        ['http', 'https'].indexOf(requestProperties.body.protocol) > -1
+            ? requestProperties.body.protocol
+            : false;
+
+    const url =
+        typeof requestProperties.body.url === 'string' &&
+        requestProperties.body.url.trim().length > 0
+            ? requestProperties.body.url
+            : false;
+
+    const method =
+        typeof requestProperties.body.method === 'string' &&
+        ['GET', 'POST', 'PUT', 'DELETE'].indexOf(requestProperties.body.method) > -1
+            ? requestProperties.body.method
+            : false;
+
+    const successCodes =
+        typeof requestProperties.body.successCodes === 'object' &&
+        requestProperties.body.successCodes instanceof Array
+            ? requestProperties.body.successCodes
+            : false;
+
+    const timeoutSeconds =
+        typeof requestProperties.body.timeoutSeconds === 'number' &&
+        requestProperties.body.timeoutSeconds % 1 === 0 &&
+        requestProperties.body.timeoutSeconds >= 1 &&
+        requestProperties.body.timeoutSeconds <= 5
+            ? requestProperties.body.timeoutSeconds
+            : false;
+    if (id) {
+        if (protocol || successCodes || url || method || timeoutSeconds) {
+            data.read('checks', id, (err1, checkData) => {
+                if (!err1 && checkData) {
+                    const checkObj = parseJSON(checkData);
+                    const token =
+                        typeof requestProperties.headersObject.token === 'string'
+                            ? requestProperties.headersObject.token
+                            : false;
+                    tokenHandler._token.verify(token, checkObj.userPhone, (tokenIsValid) => {
+                        if (tokenIsValid) {
+                            if (protocol) {
+                                checkObj.protocol = protocol;
+                            }
+                            if (url) {
+                                checkObj.url = url;
+                            }
+                            if (successCodes) {
+                                checkObj.successCodes = successCodes;
+                            }
+                            if (method) {
+                                checkObj.method = method;
+                            }
+                            if (timeoutSeconds) {
+                                checkObj.timeoutSeconds = timeoutSeconds;
+                            }
+                            // update object
+                            data.update('checks', id, checkObj, (err2) => {
+                                if (!err2) {
+                                    callback(200, checkObj);
+                                } else {
+                                    callback(500, {
+                                        error: 'there was a server side error',
+                                    });
+                                }
+                            });
+                        } else {
+                            callback(403, {
+                                error: 'Authentication error',
+                            });
+                        }
+                    });
+                } else {
+                    callback(500, {
+                        error: 'There was problem in server',
+                    });
+                }
+            });
+        } else {
+            callback(400, {
+                error: 'Ypu must provide at least 1 field to update',
+            });
+        }
+    } else {
+        callback(400, {
+            error: 'There was a problem in your request',
+        });
+    }
+};
+
+handler._check.delete = (requestProperties, callback) => {
+    const id =
+        typeof requestProperties.queryStringObject.id === 'string' &&
+        requestProperties.queryStringObject.id.trim().length === 20
+            ? requestProperties.queryStringObject.id
+            : false;
+
+    if (id) {
+        // lookup the check
+        data.read('checks', id, (err1, checkData) => {
+            if (!err1 && checkData) {
+                const token =
+                    typeof requestProperties.headersObject.token === 'string'
+                        ? requestProperties.headersObject.token
+                        : false;
+
+                tokenHandler._token.verify(
+                    token,
+                    parseJSON(checkData).userPhone,
+                    (tokenIsValid) => {
+                        if (tokenIsValid) {
+                            // delete the check data
+                            data.delete('checks', id, (err2) => {
+                                if (!err2) {
+                                    data.read(
+                                        'users',
+                                        parseJSON(checkData).userPhone,
+                                        (err3, userData) => {
+                                            const userObject = parseJSON(userData);
+                                            if (!err3 && userData) {
+                                                const userChecks =
+                                                    typeof userObject.checks === 'object' &&
+                                                    userObject.checks instanceof Array
+                                                        ? userObject.checks
+                                                        : [];
+
+                                                // remove the deleted check id from user's list of checks
+                                                const checkPosition = userChecks.indexOf(id);
+                                                if (checkPosition > -1) {
+                                                    userChecks.splice(checkPosition, 1);
+                                                    // resave the user data
+                                                    userObject.checks = userChecks;
+                                                    data.update(
+                                                        'users',
+                                                        userObject.phone,
+                                                        userObject,
+                                                        (err4) => {
+                                                            if (!err4) {
+                                                                callback(200);
+                                                            } else {
+                                                                callback(500, {
+                                                                    error: 'There was a server side problem!',
+                                                                });
+                                                            }
+                                                        }
+                                                    );
+                                                } else {
+                                                    callback(500, {
+                                                        error: 'The check id that you are trying to remove is not found in user!',
+                                                    });
+                                                }
+                                            } else {
+                                                callback(500, {
+                                                    error: 'There was a server side problem!',
+                                                });
+                                            }
+                                        }
+                                    );
+                                } else {
+                                    callback(500, {
+                                        error: 'There was a server side problem!',
+                                    });
+                                }
+                            });
+                        } else {
+                            callback(403, {
+                                error: 'Authentication failure!',
+                            });
+                        }
+                    }
+                );
+            } else {
+                callback(500, {
+                    error: 'You have a problem in your request',
+                });
+            }
+        });
+    } else {
+        callback(400, {
+            error: 'You have a problem in your request',
+        });
+    }
+};
 
 module.exports = handler;
