@@ -7,8 +7,9 @@
 
 // dependencies
 const data = require('../../lib/data');
-const { hash, parseJSON } = require('../../helpers/utilities');
+const { hash, parseJSON, createRandomString } = require('../../helpers/utilities');
 const tokenHandler = require('./tokenHandler');
+const { maxChecks } = require('../../helpers/environments');
 
 // module scaffold
 const handler = {};
@@ -27,64 +28,110 @@ handler.checkHandler = (requestProperties, callback) => {
 handler._check = {};
 
 handler._check.post = (requestProperties, callback) => {
-    const firstName =
-        typeof requestProperties.body.firstName === 'string' &&
-        requestProperties.body.firstName.trim().length > 0
-            ? requestProperties.body.firstName
+    // validate inputs
+    const protocol =
+        typeof requestProperties.body.protocol === 'string' &&
+        ['http', 'https'].indexOf(requestProperties.body.protocol) > -1
+            ? requestProperties.body.protocol
             : false;
 
-    const lastName =
-        typeof requestProperties.body.lastName === 'string' &&
-        requestProperties.body.lastName.trim().length > 0
-            ? requestProperties.body.lastName
+    const url =
+        typeof requestProperties.body.url === 'string' &&
+        requestProperties.body.url.trim().length > 0
+            ? requestProperties.body.url
             : false;
 
-    const phone =
-        typeof requestProperties.body.phone === 'string' &&
-        requestProperties.body.phone.trim().length === 11
-            ? requestProperties.body.phone
+    const method =
+        typeof requestProperties.body.method === 'string' &&
+        ['GET', 'POST', 'PUT', 'DELETE'].indexOf(requestProperties.body.method) > -1
+            ? requestProperties.body.method
             : false;
 
-    const password =
-        typeof requestProperties.body.password === 'string' &&
-        requestProperties.body.password.trim().length > 0
-            ? requestProperties.body.password
+    const successCodes =
+        typeof requestProperties.body.successCodes === 'object' &&
+        requestProperties.body.successCodes instanceof Array
+            ? requestProperties.body.successCodes
             : false;
 
-    const tosAgreement =
-        typeof requestProperties.body.tosAgreement === 'boolean' &&
-        requestProperties.body.tosAgreement
-            ? requestProperties.body.tosAgreement
+    const timeoutSeconds =
+        typeof requestProperties.body.timeoutSeconds === 'number' &&
+        requestProperties.body.timeoutSeconds % 1 === 0 &&
+        requestProperties.body.timeoutSeconds >= 1 &&
+        requestProperties.body.timeoutSeconds <= 5
+            ? requestProperties.body.timeoutSeconds
             : false;
 
-    if (firstName && lastName && password && phone && tosAgreement) {
-        // make sure that user dose not exist
-        data.read('users', phone, (err) => {
-            if (err) {
-                const userObject = {
-                    firstName,
-                    lastName,
-                    phone,
-                    password: hash(password),
-                    tosAgreement,
-                };
+    if (protocol && url && method && successCodes && timeoutSeconds) {
+        const token =
+            typeof requestProperties.headersObject.token === 'string'
+                ? requestProperties.headersObject.token
+                : false;
 
-                // store the user
-                data.create('users', phone, userObject, (err1) => {
-                    const user = { ...userObject };
-                    delete user.password;
-                    if (!err1) {
-                        callback(200, {
-                            message: 'user was created successfully',
-                            user,
+        // loo0k up the user phone number
+        data.read('tokens', token, (err1, tokenData) => {
+            if (!err1 && tokenData) {
+                const userPhone = parseJSON(tokenData).phone;
+                data.read('users', userPhone, (err2, userData) => {
+                    if (!err2 && userData) {
+                        tokenHandler._token.verify(token, userPhone, (tokenIsValid) => {
+                            if (tokenIsValid) {
+                                const userObj = parseJSON(userData);
+                                const userChecks =
+                                    typeof userObj.checks === 'object' &&
+                                    userObj.checks instanceof Array
+                                        ? userObj.checks
+                                        : [];
+                                if (userChecks.length < maxChecks) {
+                                    const checkId = createRandomString(20);
+                                    const checkObj = {
+                                        id: checkId,
+                                        userPhone,
+                                        protocol,
+                                        url,
+                                        method,
+                                        successCodes,
+                                        timeoutSeconds,
+                                    };
+                                    data.create('checks', checkId, checkObj, (err3) => {
+                                        if (!err3) {
+                                            userObj.checks = userChecks;
+                                            userObj.checks.push(checkId);
+
+                                            data.update('users', userPhone, userObj, (err4) => {
+                                                if (!err4) {
+                                                    callback(200, checkObj);
+                                                } else {
+                                                    callback(500, {
+                                                        error: 'Server time out',
+                                                    });
+                                                }
+                                            });
+                                        } else {
+                                            callback(500, {
+                                                error: 'Server time out',
+                                            });
+                                        }
+                                    });
+                                } else {
+                                    callback(401, {
+                                        error: 'Reached max check limit',
+                                    });
+                                }
+                            } else {
+                                callback(403, {
+                                    error: 'authentication failed',
+                                });
+                            }
                         });
                     } else {
-                        callback(500, { error: 'could not create user!' });
+                        callback(403, {
+                            error: 'User not found',
+                        });
                     }
                 });
             } else {
-                callback(500, {
-                    error: 'User already exist.',
+                callback(403, {
+                    error: 'Unauthorized ',
                 });
             }
         });
@@ -95,178 +142,10 @@ handler._check.post = (requestProperties, callback) => {
     }
 };
 
-handler._check.get = (requestProperties, callback) => {
-    // check the phone number is valid
-    const phone =
-        typeof requestProperties.queryStringObject.phone === 'string' &&
-        requestProperties.queryStringObject.phone.trim().length === 11
-            ? requestProperties.queryStringObject.phone
-            : false;
-    if (phone) {
-        // verify token
-        const token =
-            typeof requestProperties.headersObject.token === 'string'
-                ? requestProperties.headersObject.token
-                : false;
+handler._check.get = (requestProperties, callback) => {};
 
-        tokenHandler._token.verify(token, phone, (tokenId) => {
-            // token id is the status of token in bool
-            if (tokenId) {
-                // look up the user
-                data.read('users', phone, (err, u) => {
-                    const user = { ...parseJSON(u) };
-                    if (!err && user) {
-                        delete user.password;
-                        callback(200, user);
-                    } else {
-                        callback(404, {
-                            message: 'User not found.',
-                        });
-                    }
-                });
-            } else {
-                callback(403, {
-                    error: 'Authentication failed',
-                });
-            }
-        });
-    } else {
-        callback(404, {
-            message: 'User not found.',
-        });
-    }
-};
+handler._check.put = (requestProperties, callback) => {};
 
-handler._check.put = (requestProperties, callback) => {
-    const firstName =
-        typeof requestProperties.body.firstName === 'string' &&
-        requestProperties.body.firstName.trim().length > 0
-            ? requestProperties.body.firstName
-            : false;
-
-    const lastName =
-        typeof requestProperties.body.lastName === 'string' &&
-        requestProperties.body.lastName.trim().length > 0
-            ? requestProperties.body.lastName
-            : false;
-
-    const phone =
-        typeof requestProperties.body.phone === 'string' &&
-        requestProperties.body.phone.trim().length === 11
-            ? requestProperties.body.phone
-            : false;
-
-    const password =
-        typeof requestProperties.body.password === 'string' &&
-        requestProperties.body.password.trim().length > 0
-            ? requestProperties.body.password
-            : false;
-
-    if (phone) {
-        // verify token
-        const token =
-            typeof requestProperties.headersObject.token === 'string'
-                ? requestProperties.headersObject.token
-                : false;
-
-        tokenHandler._token.verify(token, phone, (tokenId) => {
-            // token id is the status of token in bool
-            if (tokenId) {
-                if (firstName || lastName || password) {
-                    data.read('users', phone, (err, uData) => {
-                        const userData = { ...parseJSON(uData) };
-
-                        if (!err && userData) {
-                            if (firstName) {
-                                userData.firstName = firstName;
-                            }
-                            if (lastName) {
-                                userData.lastName = lastName;
-                            }
-                            if (password) {
-                                userData.password = hash(password);
-                            }
-                            // store in data base
-                            data.update('users', phone, userData, (err2) => {
-                                const user = { ...userData };
-                                delete user.password;
-                                if (!err2) {
-                                    callback(200, {
-                                        message: 'user was updated successfully',
-                                        user,
-                                    });
-                                }
-                            });
-                        } else {
-                            callback(400, {
-                                error: 'You have a problem in your request',
-                            });
-                        }
-                    });
-                } else {
-                    callback(400, {
-                        error: 'You have a problem in your request',
-                    });
-                }
-            } else {
-                callback(403, {
-                    error: 'Authentication failed',
-                });
-            }
-        });
-    } else {
-        callback(400, {
-            error: 'Invalid phone number',
-        });
-    }
-};
-
-handler._check.delete = (requestProperties, callback) => {
-    // check the phone number is valid
-    const phone =
-        typeof requestProperties.queryStringObject.phone === 'string' &&
-        requestProperties.queryStringObject.phone.trim().length === 11
-            ? requestProperties.queryStringObject.phone
-            : false;
-
-    if (phone) {
-        // verify token
-        const token =
-            typeof requestProperties.headersObject.token === 'string'
-                ? requestProperties.headersObject.token
-                : false;
-
-        tokenHandler._token.verify(token, phone, (tokenId) => {
-            // token id is the status of token in bool
-            if (tokenId) {
-                data.read('users', phone, (err, userData) => {
-                    if (!err && userData) {
-                        data.delete('users', phone, (err1) => {
-                            if (!err1) {
-                                callback(200, {
-                                    message: 'user was successfully deleted',
-                                });
-                            } else {
-                                callback(500, {
-                                    error: 'Internal server error',
-                                });
-                            }
-                        });
-                    } else {
-                        callback(404, {
-                            error: 'user not found',
-                        });
-                    }
-                });
-            } else {
-                callback(403, {
-                    error: 'Authentication failed',
-                });
-            }
-        });
-    } else {
-        callback(400, { error: 'There is a problem with req' });
-    }
-};
+handler._check.delete = (requestProperties, callback) => {};
 
 module.exports = handler;
