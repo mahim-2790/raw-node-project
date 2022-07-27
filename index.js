@@ -1,34 +1,37 @@
 /*
- * Title: Uptime Monitoring Application
- * Description: A RESrFul API to monitor up or down time of user defined links
+ * Title: Uptime Monitoring Application initial app
+ * Description: initializing the project
  * Author: Mohi Uddin Mahim
  * Date: 03-07-22
  */
 // dependencies
-const http = require('http');
-const { handleReqRes } = require('./helpers/handleReqRes');
-const environment = require('./helpers/environments');
-const { sendTwilioSms } = require('./helpers/notifications');
-// const data = require('./lib/data');
+const server = require('./lib/server');
+const worker = require('./lib/workers');
 
 // app object - module scaffolding
 const app = {};
 
-sendTwilioSms('01793323884', 'hello world', (err) => {
-    console.log('the error was', err);
-});
+app.init = () => {
+    // starting the server
+    server.init();
 
-// create server
-app.createServer = () => {
-    const server = http.createServer(app.handleReqRes);
-    server.listen(environment.port, () => {
-        console.log(`env var is ${process.env.NODE_ENV}`);
-        console.log(`listening to port ${environment.port}`);
-    });
+    // starting the workers
+    worker.init();
 };
 
-// handle Request and Response
-app.handleReqRes = handleReqRes;
+// create server
+// app.createServer = () => {
+//     const server = http.createServer(app.handleReqRes);
+//     server.listen(environment.port, () => {
+//         console.log(`env var is ${process.env.NODE_ENV}`);
+//         console.log(`listening to port ${environment.port}`);
+//     });
+// };
+
+// // handle Request and Response
+// app.handleReqRes = handleReqRes;
 
 // start the server
-app.createServer();
+app.init();
+
+module.exports = app;
